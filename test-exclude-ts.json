@@ -1,0 +1,13 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.app.click_me_1": "Click Me",
+    "app.app.test_application_2": "Test Application",
+    "app.app.this_is_html_only_extract_3": "This is HTML only extraction"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T13:17:24.027Z",
+    "totalTexts": 3,
+    "keyPrefix": "app"
+  }
+}

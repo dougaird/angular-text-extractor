@@ -1,0 +1,17 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.app.save_changes_1": "Save Changes",
+    "app.app.application_title_2": "Application Title",
+    "app.app.welcome_to_our_platform_3": "Welcome to our platform",
+    "app.app.welcome_to_our_applicatio_4": "Welcome to our application!",
+    "app.app.please_complete_your_prof_5": "Please complete your profile",
+    "app.app.unable_to_process_your_re_6": "Unable to process your request",
+    "app.app.your_changes_have_been_sa_7": "Your changes have been saved successfully"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T13:16:32.503Z",
+    "totalTexts": 7,
+    "keyPrefix": "app"
+  }
+}

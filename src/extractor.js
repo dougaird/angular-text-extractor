@@ -544,6 +544,26 @@ class TextExtractor {
       return false;
     }
     
+    // Skip interpolated strings with ${} format
+    if (trimmed.includes('${') && trimmed.includes('}')) {
+      return false;
+    }
+    
+    // Skip single words (likely identifiers or simple values)
+    if (!/\s/.test(trimmed) && trimmed.length < 25) {
+      return false;
+    }
+    
+    // Skip camelCase strings (likely identifiers)
+    if (/^[a-z][a-zA-Z0-9]*$/.test(trimmed) && /[A-Z]/.test(trimmed)) {
+      return false;
+    }
+    
+    // Skip kebab-case strings (likely CSS classes or identifiers)
+    if (/^[a-z0-9]+(-[a-z0-9]+)+$/.test(trimmed)) {
+      return false;
+    }
+    
     // If we have context information, use it for better filtering
     if (context) {
       // Exclude strings based on context
@@ -597,9 +617,17 @@ class TextExtractor {
       
       // File paths and URLs
       /^https?:\/\//, // URLs
+      /^ftp:\/\//, // FTP URLs
+      /^file:\/\//, // File URLs
+      /^\w+:\/\//, // Any protocol
       /^\/[\/\w.-]*$/, // Absolute paths
       /^\.{1,2}\/[\/\w.-]*$/, // Relative paths
-      /^\w+:\/\//, // Any protocol
+      /^[a-zA-Z]:[\\\/]/, // Windows paths like C:\path or C:/path
+      /^~\//, // Home directory paths
+      /\.(js|ts|html|css|scss|json|xml|yml|yaml)$/i, // File extensions
+      /\/api\//, // API paths
+      /\/assets\//, // Asset paths
+      /^\.\/.*\.(js|ts|html|css)$/, // Relative file paths
       
       // Code identifiers and selectors
       /^[a-zA-Z_$][a-zA-Z0-9_$]*$/, // Simple identifiers (variables, functions)
@@ -730,10 +758,14 @@ class TextExtractor {
       await this.extractFromHtmlTemplate(fullPath);
     }
 
-    // Process TypeScript files
-    for (const file of tsFiles) {
-      const fullPath = path.join(dirPath, file);
-      await this.extractFromTypeScriptFile(fullPath);
+    // Process TypeScript files (unless excluded)
+    if (!this.options.excludeTs) {
+      for (const file of tsFiles) {
+        const fullPath = path.join(dirPath, file);
+        await this.extractFromTypeScriptFile(fullPath);
+      }
+    } else {
+      console.log('TypeScript extraction skipped due to --exclude-ts option');
     }
   }
 
