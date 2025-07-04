@@ -1,0 +1,36 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.userProfile.save_changes_1": "Save Changes",
+    "app.userProfile.validate_2": "Validate",
+    "app.userProfile.support_team_3": "support team",
+    "app.userProfile.user_profile_4": "User Profile",
+    "app.userProfile.personal_information_5": "Personal Information",
+    "app.userProfile.need_help_6": "Need Help?",
+    "app.userProfile.username_username_7": "Username: <strong>{{username}}</strong>",
+    "app.userProfile.update_your_information_b_8": "Update your information below.",
+    "app.userProfile.contact_our_support_team__9": "Contact our <a href=\"/support\">support team</a> for assistance.",
+    "app.app.get_started_10": "Get Started",
+    "app.app.home_11": "Home",
+    "app.app.profile_12": "Profile",
+    "app.app.settings_13": "Settings",
+    "app.app.title_14": "{{title}}",
+    "app.app.welcome_to_our_platform_15": "Welcome to our platform",
+    "app.app.features_16": "Features",
+    "app.app.get_started_by_clicking_t_17": "Get started by clicking the button below.",
+    "app.app._2024_my_company_all_righ_18": "© 2024 My Company. All rights reserved.",
+    "app.app.easy_to_use_interface_19": "Easy to use interface",
+    "app.app.secure_data_handling_20": "Secure data handling",
+    "app.app.247_customer_support_21": "24/7 customer support",
+    "app.userProfile.your_profile_has_been_sav_22": "Your profile has been saved successfully!",
+    "app.userProfile.username_is_required_23": "Username is required",
+    "app.app.my_angular_application_24": "My Angular Application",
+    "app.app.welcome_to_our_applicatio_25": "Welcome to our application!",
+    "app.app.please_check_your_interne_26": "Please check your internet connection"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T11:59:58.261Z",
+    "totalTexts": 26,
+    "keyPrefix": "app"
+  }
+}

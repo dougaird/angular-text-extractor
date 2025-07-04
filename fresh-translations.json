@@ -1,0 +1,36 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.userProfile.save_changes_1": "Save Changes",
+    "app.userProfile.validate_2": "Validate",
+    "app.userProfile.contact_our_support_team_3": "Contact our support team",
+    "app.userProfile.user_profile_4": "User Profile",
+    "app.userProfile.personal_information_5": "Personal Information",
+    "app.userProfile.need_help_contact_our_sup_6": "Need help? <a href=\"/support\">Contact our support team</a> for assistance.",
+    "app.userProfile.username_field_7": "Username field",
+    "app.userProfile.enter_your_username_8": "Enter your username",
+    "app.userProfile.email_field_9": "Email field",
+    "app.userProfile.enter_your_email_10": "Enter your email",
+    "app.app.get_started_11": "Get Started",
+    "app.app.home_12": "Home",
+    "app.app.profile_13": "Profile",
+    "app.app.settings_14": "Settings",
+    "app.app.my_application_title_15": "My Application Title",
+    "app.app.welcome_to_our_platform_16": "Welcome to our platform",
+    "app.app.features_17": "Features",
+    "app.app.get_started_by_clicking_t_18": "Get started by clicking the button below to explore our <strong>amazing features</strong>.",
+    "app.app._2024_my_company_all_righ_19": "© 2024 My Company. All rights reserved.",
+    "app.app.easy_to_use_interface_20": "Easy to use interface",
+    "app.app.secure_data_handling_21": "Secure data handling",
+    "app.app.247_customer_support_22": "24/7 customer support",
+    "app.userProfile.your_profile_has_been_sav_23": "Your profile has been saved successfully!",
+    "app.userProfile.username_is_required_24": "Username is required",
+    "app.app.welcome_to_our_applicatio_25": "Welcome to our application!",
+    "app.app.please_check_your_interne_26": "Please check your internet connection"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T12:28:06.816Z",
+    "totalTexts": 26,
+    "keyPrefix": "app"
+  }
+}

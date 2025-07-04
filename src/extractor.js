@@ -103,6 +103,11 @@ class TextExtractor {
             return;
           }
           
+          // Skip if this looks like already-translated content
+          if (fullText.includes("{{ '") && fullText.includes("' | translate }}")) {
+            return;
+          }
+          
           // Check if element has child elements with text (mixed content)
           const hasChildElements = $el.find('*').length > 0;
           const htmlContent = $el.html();
@@ -185,6 +190,12 @@ class TextExtractor {
   containsTranslatableText(htmlContent) {
     // Remove HTML tags and check if remaining text is translatable
     const textOnly = htmlContent.replace(/<[^>]*>/g, '').trim();
+    
+    // Skip already-translated content
+    if (textOnly.includes("{{ '") && textOnly.includes("' | translate }}")) {
+      return false;
+    }
+    
     return textOnly.length > 0 && !this.isExcluded(textOnly) && this.isDisplayText(textOnly);
   }
 
@@ -196,6 +207,7 @@ class TextExtractor {
       const content = await fs.readFile(filePath, 'utf8');
       const stringLiterals = this.extractStringLiterals(content);
       let modifiedContent = content;
+      let hasReplacements = false;
 
       stringLiterals.forEach(literal => {
         if (!this.isExcluded(literal.value)) {
@@ -204,15 +216,37 @@ class TextExtractor {
           
           if (this.options.replace) {
             // Replace string literal with translation service call
-            modifiedContent = modifiedContent.replace(
-              literal.full,
-              `this.translate.get('${key}')`
-            );
+            // Use pipe for simple assignments, observables for method calls
+            const isInAssignment = /\w+\s*[:=]\s*$/.test(literal.context.beforeContext);
+            const isInMethodCall = /\.\w+\s*\(\s*$/.test(literal.context.beforeContext);
+            
+            if (isInAssignment) {
+              // For property assignments, use pipe
+              modifiedContent = modifiedContent.replace(
+                literal.full,
+                `'${key}' | translate`
+              );
+            } else if (isInMethodCall) {
+              // For method calls like alert(), use synchronous get
+              modifiedContent = modifiedContent.replace(
+                literal.full,
+                `this.translate.instant('${key}')`
+              );
+            } else {
+              // Default to synchronous instant translation
+              modifiedContent = modifiedContent.replace(
+                literal.full,
+                `this.translate.instant('${key}')`
+              );
+            }
+            hasReplacements = true;
           }
         }
       });
 
-      if (this.options.replace && modifiedContent !== content) {
+      if (this.options.replace && hasReplacements) {
+        // Ensure TranslateService import and injection
+        modifiedContent = this.ensureTranslateServiceIntegration(modifiedContent);
         await fs.writeFile(filePath, modifiedContent, 'utf8');
       }
 
@@ -221,26 +255,130 @@ class TextExtractor {
     }
   }
 
-  extractStringLiterals(content) {
-    const literals = [];
-    const regex = /(['"`])((?:(?!\1)[^\\]|\\.)*)(\1)/g;
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      const value = match[2];
-      const context = this.getStringContext(content, match.index);
-      
-      if (value.length > 0 && this.isDisplayText(value, context)) {
-        literals.push({
-          full: match[0],
-          value: value,
-          quote: match[1],
-          context: context
-        });
+  ensureTranslateServiceIntegration(content) {
+    // Check if TranslateService is already imported
+    const hasTranslateImport = /import.*TranslateService.*from\s+['"].*['"]/.test(content);
+    
+    if (!hasTranslateImport) {
+      // Add TranslateService import
+      const importMatch = content.match(/import.*from\s+['"]@angular\/core['"];?\s*\n/);
+      if (importMatch) {
+        const insertIndex = importMatch.index + importMatch[0].length;
+        const importStatement = "import { TranslateService } from '../shared/translate.service';\n";
+        content = content.slice(0, insertIndex) + importStatement + content.slice(insertIndex);
+      } else {
+        // Add import at the top
+        content = "import { TranslateService } from '../shared/translate.service';\n" + content;
       }
     }
 
+    // Check if TranslateService is injected in constructor
+    const hasTranslateInjection = /constructor\s*\([^)]*translate\s*:\s*TranslateService/.test(content);
+    
+    if (!hasTranslateInjection) {
+      // Find constructor and add translate service injection
+      const constructorMatch = content.match(/(constructor\s*\(\s*)(.*?)(\s*\)\s*{)/s);
+      
+      if (constructorMatch) {
+        const beforeParams = constructorMatch[1];
+        const params = constructorMatch[2].trim();
+        const afterParams = constructorMatch[3];
+        
+        let newParams = params;
+        if (params && !params.endsWith(',')) {
+          newParams += ',\n    ';
+        } else if (!params) {
+          newParams = '\n    ';
+        }
+        newParams += 'private translate: TranslateService\n  ';
+        
+        const newConstructor = beforeParams + newParams + afterParams;
+        content = content.replace(constructorMatch[0], newConstructor);
+      } else {
+        // Add constructor if it doesn't exist
+        const classMatch = content.match(/(export\s+class\s+\w+.*?{)/s);
+        if (classMatch) {
+          const insertIndex = classMatch.index + classMatch[0].length;
+          const constructor = '\n\n  constructor(private translate: TranslateService) {}\n';
+          content = content.slice(0, insertIndex) + constructor + content.slice(insertIndex);
+        }
+      }
+    }
+
+    return content;
+  }
+
+  extractStringLiterals(content) {
+    const literals = [];
+    
+    // Use the original content but check for comments manually
+    const stringPatterns = [
+      /'([^'\\]|\\.)*'/g,  // Single quoted strings
+      /"([^"\\]|\\.)*"/g,  // Double quoted strings
+      /`([^`\\]|\\.)*`/g   // Template literals
+    ];
+    
+    stringPatterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        // Skip if inside comment
+        if (this.isInComment(content, match.index)) {
+          continue;
+        }
+        
+        const fullMatch = match[0];
+        const value = fullMatch.slice(1, -1); // Remove quotes
+        const context = this.getStringContext(content, match.index);
+        
+        if (value.length > 0 && this.isDisplayText(value, context)) {
+          literals.push({
+            full: fullMatch,
+            value: value,
+            quote: fullMatch[0],
+            context: context
+          });
+        }
+      }
+    });
+
     return literals;
+  }
+
+
+  isInComment(content, position) {
+    // Check if position is inside a comment
+    const beforePosition = content.substring(0, position);
+    
+    // Check for line comments
+    const lastLineStart = beforePosition.lastIndexOf('\n');
+    const currentLine = content.substring(lastLineStart + 1, content.indexOf('\n', position) || content.length);
+    const commentIndex = currentLine.indexOf('//');
+    if (commentIndex !== -1 && position - lastLineStart - 1 > commentIndex) {
+      return true;
+    }
+    
+    // Check for block comments
+    let blockCommentStart = -1;
+    let blockCommentEnd = -1;
+    let searchIndex = 0;
+    
+    while (searchIndex < position) {
+      const nextStart = beforePosition.indexOf('/*', searchIndex);
+      const nextEnd = beforePosition.indexOf('*/', searchIndex);
+      
+      if (nextStart !== -1 && nextStart < position) {
+        blockCommentStart = nextStart;
+        const correspondingEnd = content.indexOf('*/', nextStart + 2);
+        if (correspondingEnd !== -1 && position < correspondingEnd) {
+          return true;
+        }
+        searchIndex = nextStart + 2;
+      } else {
+        break;
+      }
+    }
+    
+    return false;
   }
 
   getStringContext(content, stringIndex) {
@@ -249,27 +387,105 @@ class TextExtractor {
     const lineEnd = content.indexOf('\n', stringIndex);
     const line = content.substring(lineStart, lineEnd === -1 ? content.length : lineEnd).trim();
     
-    // Get previous 100 characters for additional context
-    const contextStart = Math.max(0, stringIndex - 100);
+    // Get previous 200 characters for additional context
+    const contextStart = Math.max(0, stringIndex - 200);
     const beforeContext = content.substring(contextStart, stringIndex);
+    
+    // Get more context to detect class-level definitions
+    const largerContextStart = Math.max(0, stringIndex - 500);
+    const largerContext = content.substring(largerContextStart, stringIndex);
     
     return {
       line: line,
       beforeContext: beforeContext.toLowerCase(),
+      largerContext: largerContext,
       isImport: /^\s*import\s+/.test(line),
       isRequire: /require\s*\(\s*$/.test(beforeContext),
-      isDecorator: /@\w+\s*\(\s*$/.test(beforeContext),
+      isDecorator: /@\w+\s*\(\s*$/.test(beforeContext) || /@\w+\s*\(\s*{\s*[\w\s:,'"]*$/.test(beforeContext),
+      isComponentDecorator: this.isInComponentDecorator(largerContext, stringIndex),
+      isClassProperty: this.isClassLevelProperty(beforeContext),
+      isMethodCall: /\.\w+\s*\(\s*$/.test(beforeContext),
       isProperty: /\w+\s*:\s*$/.test(beforeContext),
       isArray: /\[\s*$/.test(beforeContext) || /,\s*$/.test(beforeContext),
       isObjectKey: /{\s*$/.test(beforeContext) || /[,{]\s*\w*\s*$/.test(beforeContext),
       isConditional: /if\s*\(|switch\s*\(|case\s+/.test(beforeContext),
       isThrow: /throw\s+new\s+\w+\s*\(\s*$/.test(beforeContext),
-      isConsole: /console\.\w+\s*\(\s*$/.test(beforeContext)
+      isConsole: /console\.\w+\s*\(\s*$/.test(beforeContext),
+      isInMethod: this.isInsideMethod(largerContext)
     };
+  }
+
+  isInComponentDecorator(context, stringIndex) {
+    // Check if we're inside @Component, @Injectable, etc. decorators
+    const decoratorPattern = /@(Component|Injectable|Directive|Pipe|NgModule)\s*\(/g;
+    let match;
+    
+    while ((match = decoratorPattern.exec(context)) !== null) {
+      const decoratorStart = match.index;
+      // Find the closing parenthesis of the decorator
+      let parenCount = 1;
+      let pos = decoratorStart + match[0].length;
+      
+      while (pos < context.length && parenCount > 0) {
+        if (context[pos] === '(') parenCount++;
+        if (context[pos] === ')') parenCount--;
+        pos++;
+      }
+      
+      // If string is within decorator bounds
+      if (stringIndex >= decoratorStart + context.length - 500 && stringIndex <= pos + context.length - 500) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  isClassLevelProperty(beforeContext) {
+    // Check if this is a class-level property (not inside a method)
+    const lines = beforeContext.split('\n');
+    const lastFewLines = lines.slice(-5).join('\n');
+    
+    // Look for patterns that indicate class-level properties
+    return /^\s*(private|public|protected|readonly)?\s*\w+\s*[:=]\s*$/.test(lastFewLines) ||
+           /^\s*\w+\s*[:=]\s*$/.test(lastFewLines);
+  }
+
+  isInsideMethod(context) {
+    // Simple heuristic: check for method signatures in recent context
+    const methodPattern = /\w+\s*\([^)]*\)\s*:\s*\w+\s*{|\w+\s*\([^)]*\)\s*{/g;
+    const constructorPattern = /constructor\s*\([^)]*\)\s*{/g;
+    
+    let lastMethodStart = -1;
+    let lastMethodEnd = -1;
+    
+    // Find the most recent method start
+    let match;
+    while ((match = methodPattern.exec(context)) !== null) {
+      lastMethodStart = match.index + match[0].length;
+    }
+    
+    while ((match = constructorPattern.exec(context)) !== null) {
+      lastMethodStart = Math.max(lastMethodStart, match.index + match[0].length);
+    }
+    
+    // Simple check: if we found a method signature recently, we're probably in it
+    return lastMethodStart > lastMethodEnd && lastMethodStart > context.length - 300;
   }
 
   isDisplayText(text, context = null) {
     const trimmed = text.trim();
+    
+    // Skip already-translated content
+    if (/^[a-zA-Z0-9_.]+$/.test(trimmed) && trimmed.includes('.')) {
+      // This looks like a translation key
+      return false;
+    }
+    
+    // Skip template literals with interpolation that looks like translation
+    if (/^\$\{.*\}$/.test(trimmed) || /assets\/i18n\/.*\.json/.test(trimmed)) {
+      return false;
+    }
     
     // If we have context information, use it for better filtering
     if (context) {
@@ -278,13 +494,22 @@ class TextExtractor {
         return false; // Import statements and require calls
       }
       
-      if (context.isDecorator) {
+      if (context.isDecorator || context.isComponentDecorator) {
         return false; // Angular decorators like @Component, @Injectable
       }
       
-      if (context.isThrow) {
-        // Only include user-facing error messages, exclude technical ones
+      // Exclude class-level properties that aren't user-facing (unless in method)
+      if (context.isClassProperty && !context.isInMethod) {
+        return false;
+      }
+      
+      if (context.isThrow && context.isInMethod) {
+        // Only include user-facing error messages in methods, exclude technical ones
         return this.isUserFacingErrorMessage(trimmed);
+      }
+      
+      if (context.isThrow && !context.isInMethod) {
+        return false; // Class-level error constants are not user-facing
       }
       
       if (context.isConsole) {
@@ -298,6 +523,11 @@ class TextExtractor {
       
       // Items in arrays that look like code identifiers
       if (context.isArray && this.isCodeIdentifier(trimmed)) {
+        return false;
+      }
+      
+      // Only extract strings from methods, not class-level definitions
+      if (!context.isInMethod && !this.isLikelyUserFacingContent(trimmed)) {
         return false;
       }
     }
@@ -376,6 +606,20 @@ class TextExtractor {
            !/^(error|warning|info|success|message|title|name|label|button|link|text|content)$/i.test(text);
   }
 
+  isLikelyUserFacingContent(text) {
+    // Check if text looks like user-facing content even at class level
+    const userFacingPatterns = [
+      /welcome|hello|thank you|please|error|warning|success|message/i,
+      /click|button|save|cancel|submit|login|logout/i,
+      /your|you|we|our|this|that|here|there/i,
+      /\s+.*\s+/ // Contains multiple words with spaces
+    ];
+    
+    return userFacingPatterns.some(pattern => pattern.test(text)) && 
+           text.length > 5 && 
+           !this.isCodeIdentifier(text);
+  }
+
   isUserFacingErrorMessage(text) {
     // Determine if an error message is user-facing vs technical
     const technicalPatterns = [
@@ -408,6 +652,11 @@ class TextExtractor {
 
     console.log(`Found ${htmlFiles.length} HTML files and ${tsFiles.length} TypeScript files`);
 
+    // Create translate service infrastructure if replacing
+    if (this.options.replace) {
+      await this.ensureTranslateInfrastructure(dirPath);
+    }
+
     // Process HTML templates
     for (const file of htmlFiles) {
       const fullPath = path.join(dirPath, file);
@@ -418,6 +667,149 @@ class TextExtractor {
     for (const file of tsFiles) {
       const fullPath = path.join(dirPath, file);
       await this.extractFromTypeScriptFile(fullPath);
+    }
+  }
+
+  async ensureTranslateInfrastructure(dirPath) {
+    // Check if translate service already exists
+    const translateServicePath = path.join(dirPath, 'shared', 'translate.service.ts');
+    
+    try {
+      await fs.access(translateServicePath);
+      console.log('TranslateService already exists');
+    } catch {
+      // Create shared directory if it doesn't exist
+      const sharedDir = path.join(dirPath, 'shared');
+      await fs.mkdir(sharedDir, { recursive: true });
+      
+      // Create translate service
+      const translateServiceContent = `import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, of } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class TranslateService {
+  private translations: { [key: string]: string } = {};
+  private currentLang = 'en';
+
+  constructor(private http: HttpClient) {}
+
+  get(key: string): Observable<string> {
+    const translation = this.translations[key];
+    if (translation) {
+      return of(translation);
+    }
+    
+    // Return the key as fallback if translation not found
+    return of(key);
+  }
+
+  instant(key: string): string {
+    const translation = this.translations[key];
+    if (translation) {
+      return translation;
+    }
+    
+    // Return the key as fallback if translation not found
+    return key;
+  }
+
+  setDefaultLang(lang: string): void {
+    this.currentLang = lang;
+  }
+
+  use(lang: string): Observable<any> {
+    this.currentLang = lang;
+    return this.loadTranslations(lang);
+  }
+
+  private loadTranslations(lang: string): Observable<any> {
+    const url = \`assets/i18n/\${lang}.json\`;
+    return this.http.get(url).pipe(
+      map((translations: any) => {
+        this.translations = { ...this.translations, ...translations.translations };
+        return translations;
+      }),
+      catchError(() => {
+        console.warn(\`Could not load translations for \${lang}\`);
+        return of({});
+      })
+    );
+  }
+}
+`;
+      
+      await fs.writeFile(translateServicePath, translateServiceContent, 'utf8');
+      console.log(`Created TranslateService at ${translateServicePath}`);
+    }
+
+    // Check and update app.module.ts to include HttpClientModule
+    await this.ensureAppModuleConfiguration(dirPath);
+  }
+
+  async ensureAppModuleConfiguration(dirPath) {
+    const appModulePaths = [
+      path.join(dirPath, 'app.module.ts'),
+      path.join(dirPath, 'app', 'app.module.ts')
+    ];
+
+    let appModulePath = null;
+    for (const modulePath of appModulePaths) {
+      try {
+        await fs.access(modulePath);
+        appModulePath = modulePath;
+        break;
+      } catch {
+        // Continue to next path
+      }
+    }
+
+    if (!appModulePath) {
+      console.warn('Could not find app.module.ts to configure HttpClientModule');
+      return;
+    }
+
+    try {
+      let content = await fs.readFile(appModulePath, 'utf8');
+      
+      // Check if HttpClientModule is already imported
+      if (!content.includes('HttpClientModule')) {
+        // Add HttpClientModule import
+        const angularCommonImport = content.match(/import.*from\s+['"]@angular\/common['"];?\s*\n/);
+        if (angularCommonImport) {
+          const insertIndex = angularCommonImport.index + angularCommonImport[0].length;
+          content = content.slice(0, insertIndex) + 
+                   "import { HttpClientModule } from '@angular/common/http';\n" + 
+                   content.slice(insertIndex);
+        }
+
+        // Add to imports array
+        const importsMatch = content.match(/(imports:\s*\[)([\s\S]*?)(\])/);
+        if (importsMatch) {
+          const beforeImports = importsMatch[1];
+          const imports = importsMatch[2].trim();
+          const afterImports = importsMatch[3];
+          
+          let newImports = imports;
+          if (imports && !imports.endsWith(',')) {
+            newImports += ',\n    ';
+          } else if (!imports) {
+            newImports = '\n    ';
+          }
+          newImports += 'HttpClientModule\n  ';
+          
+          const newImportsSection = beforeImports + newImports + afterImports;
+          content = content.replace(importsMatch[0], newImportsSection);
+        }
+
+        await fs.writeFile(appModulePath, content, 'utf8');
+        console.log('Updated app.module.ts to include HttpClientModule');
+      }
+    } catch (error) {
+      console.warn(`Could not update app.module.ts: ${error.message}`);
     }
   }
 

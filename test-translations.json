@@ -1,0 +1,31 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.userProfile._appuserprofilesavechange_1": "{{ 'app.userProfile.save_changes_1' | translate }}",
+    "app.userProfile._appuserprofilevalidate2__2": "{{ 'app.userProfile.validate_2' | translate }}",
+    "app.userProfile._appuserprofileuserprofil_3": "{{ 'app.userProfile.user_profile_4' | translate }}",
+    "app.userProfile._appuserprofilepersonalin_4": "{{ 'app.userProfile.personal_information_5' | translate }}",
+    "app.userProfile._appuserprofileneedhelp6__5": "{{ 'app.userProfile.need_help_6' | translate }}",
+    "app.userProfile._appuserprofileusernameus_6": "{{ 'app.userProfile.username_username_7' | translate }}",
+    "app.userProfile._appuserprofileupdateyour_7": "{{ 'app.userProfile.update_your_information_b_8' | translate }}",
+    "app.userProfile._appuserprofilecontactour_8": "{{ 'app.userProfile.contact_our_support_team__9' | translate }}",
+    "app.app._appappgetstarted10_trans_9": "{{ 'app.app.get_started_10' | translate }}",
+    "app.app._appapphome11_translate__10": "{{ 'app.app.home_11' | translate }}",
+    "app.app._appappprofile12_translat_11": "{{ 'app.app.profile_12' | translate }}",
+    "app.app._appappsettings13_transla_12": "{{ 'app.app.settings_13' | translate }}",
+    "app.app._appapptitle14_translate__13": "{{ 'app.app.title_14' | translate }}",
+    "app.app._appappwelcometoourplatfo_14": "{{ 'app.app.welcome_to_our_platform_15' | translate }}",
+    "app.app._appappfeatures16_transla_15": "{{ 'app.app.features_16' | translate }}",
+    "app.app._appappgetstartedbyclicki_16": "{{ 'app.app.get_started_by_clicking_t_17' | translate }}",
+    "app.app._appapp2024mycompanyallri_17": "{{ 'app.app._2024_my_company_all_righ_18' | translate }}",
+    "app.app._appappeasytouseinterface_18": "{{ 'app.app.easy_to_use_interface_19' | translate }}",
+    "app.app._appappsecuredatahandling_19": "{{ 'app.app.secure_data_handling_20' | translate }}",
+    "app.app._appapp247customersupport_20": "{{ 'app.app.247_customer_support_21' | translate }}",
+    "app.translate.assetsi18nlangjson_21": "assets/i18n/${lang}.json"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T12:26:28.467Z",
+    "totalTexts": 21,
+    "keyPrefix": "app"
+  }
+}

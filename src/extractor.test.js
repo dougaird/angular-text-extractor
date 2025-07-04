@@ -292,30 +292,38 @@ describe('TextExtractor', () => {
       extractor = new TextExtractor({ keyPrefix: 'test' });
     });
 
-    it('should extract only user-facing string literals', () => {
+    it('should extract only user-facing string literals from methods', () => {
       const code = `
         import { Component } from '@angular/core';
         
         export class UserComponent {
-          title = 'User Profile';
-          apiUrl = 'https://api.example.com';
-          message = 'Welcome to your dashboard';
+          title = 'User Profile'; // Class property - will not be extracted unless user-facing
+          apiUrl = 'https://api.example.com'; // Technical - will not be extracted
           
           constructor() {
-            console.log('Component initialized');
+            console.log('Component initialized'); // Console - will not be extracted
+          }
+
+          showMessage() {
+            alert('Welcome to your dashboard'); // Method call - will be extracted
+          }
+
+          displayTitle() {
+            return 'Profile Page Title'; // Method return - will be extracted
           }
         }
       `;
       
       const literals = extractor.extractStringLiterals(code);
       
-      // Should only extract user-facing messages
+      // Should only extract user-facing messages from methods
       const values = literals.map(l => l.value);
-      expect(values).toContain('User Profile');
       expect(values).toContain('Welcome to your dashboard');
+      expect(values).toContain('Profile Page Title');
       expect(values).not.toContain('@angular/core');
       expect(values).not.toContain('https://api.example.com');
       expect(values).not.toContain('Component initialized');
+      expect(values).not.toContain('User Profile'); // Class property filtered out
     });
 
     it('should handle error messages appropriately', () => {
@@ -339,19 +347,24 @@ describe('TextExtractor', () => {
 
     it('should filter out configuration and technical strings', () => {
       const code = `
-        const config = {
-          env: 'production',
-          version: '1.2.3',
-          features: ['auth', 'notifications'],
-          title: 'My Application'
-        };
+        export class MyService {
+          private config = {
+            env: 'production',
+            version: '1.2.3',
+            features: ['auth', 'notifications']
+          };
+
+          showWelcome() {
+            return 'Welcome to My Application'; // User-facing in method
+          }
+        }
       `;
       
       const literals = extractor.extractStringLiterals(code);
       const values = literals.map(l => l.value);
       
-      // Should only extract user-facing title
-      expect(values).toContain('My Application');
+      // Should only extract user-facing content from methods
+      expect(values).toContain('Welcome to My Application');
       expect(values).not.toContain('production');
       expect(values).not.toContain('1.2.3');
       expect(values).not.toContain('auth');
@@ -628,9 +641,12 @@ describe('TextExtractor', () => {
       const extractor = new TextExtractor({ keyPrefix: 'test', replace: true });
       const tsContent = `
         export class AppComponent {
-          title = 'Welcome to our app';
-          message = 'Click here to continue';
-          apiUrl = 'https://api.example.com';
+          showMessage() {
+            alert('Welcome to our app');
+            return 'Click here to continue';
+          }
+          
+          private apiUrl = 'https://api.example.com';
         }
       `;
       
@@ -643,7 +659,7 @@ describe('TextExtractor', () => {
       const writeCall = fs.writeFile.mock.calls[0];
       const modifiedContent = writeCall[1];
       
-      expect(modifiedContent).toContain("this.translate.get('test.");
+      expect(modifiedContent).toContain("this.translate.instant('test.");
       expect(modifiedContent).not.toContain("'Welcome to our app'");
       expect(modifiedContent).toContain("'https://api.example.com'"); // Should not be replaced
     });
