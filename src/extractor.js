@@ -24,30 +24,82 @@ class TextExtractor {
       const content = await fs.readFile(filePath, 'utf8');
       const $ = cheerio.load(content);
       const modifications = [];
+      const processedElements = new Set();
 
+      // Define elements that typically contain translatable content (ordered by specificity)
+      const contentElements = ['button', 'a', 'label', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'span', 'strong', 'em', 'b', 'i'];
+      
+      // Process elements that might contain mixed content (text + HTML)
+      // Process in order of specificity to avoid parent elements interfering
+      contentElements.forEach(tagName => {
+        $(tagName).each((index, element) => {
+          const $el = $(element);
+          
+          // Skip if this element is nested inside another content element we've already processed
+          if (processedElements.has(element)) {
+            return;
+          }
+          
+          // Skip container elements that are too generic unless they have no content children
+          if (['div', 'span'].includes(tagName)) {
+            const hasContentChildren = $el.find('p, li, h1, h2, h3, h4, h5, h6, button, label, a').length > 0;
+            if (hasContentChildren) {
+              return;
+            }
+          }
+          
+          // Check if element contains any text content
+          const fullText = $el.text().trim();
+          if (!fullText || this.isExcluded(fullText)) {
+            return;
+          }
+          
+          // Check if element has child elements with text (mixed content)
+          const hasChildElements = $el.find('*').length > 0;
+          const htmlContent = $el.html();
+          
+          if (hasChildElements && this.containsTranslatableText(htmlContent)) {
+            // Extract the full HTML content including nested tags
+            const key = this.generateKey(fullText);
+            this.extractedTexts.set(key, htmlContent);
+            
+            if (this.options.replace) {
+              modifications.push({
+                element: $el,
+                originalHtml: htmlContent,
+                key: key,
+                replaceEntireContent: true
+              });
+            }
+            
+            // Mark this element and its children as processed
+            processedElements.add(element);
+            $el.find('*').each((i, child) => processedElements.add(child));
+          } else if (!hasChildElements) {
+            // Simple text content without child elements
+            if (!this.isExcluded(fullText)) {
+              const key = this.generateKey(fullText);
+              this.extractedTexts.set(key, fullText);
+              
+              if (this.options.replace) {
+                modifications.push({
+                  element: $el,
+                  originalText: fullText,
+                  key: key,
+                  replaceEntireContent: false
+                });
+              }
+            }
+            processedElements.add(element);
+          }
+        });
+      });
+
+      // Extract attribute values that contain display text
       $('*').each((index, element) => {
         const $el = $(element);
-        
-        // Extract text content (excluding child elements)
-        const textContent = $el.contents().filter(function() {
-          return this.nodeType === 3; // Text nodes only
-        }).text().trim();
-
-        if (textContent && textContent.length > 0 && !this.isExcluded(textContent)) {
-          const key = this.generateKey(textContent);
-          this.extractedTexts.set(key, textContent);
-          
-          if (this.options.replace) {
-            modifications.push({
-              element: $el,
-              originalText: textContent,
-              key: key
-            });
-          }
-        }
-
-        // Extract attribute values that contain display text
         const attributes = ['title', 'alt', 'placeholder', 'aria-label'];
+        
         attributes.forEach(attr => {
           const attrValue = $el.attr(attr);
           if (attrValue && attrValue.trim() && !this.isExcluded(attrValue)) {
@@ -64,12 +116,13 @@ class TextExtractor {
       // Apply text replacements
       if (this.options.replace) {
         modifications.forEach(mod => {
-          const originalHtml = mod.element.html();
-          const newHtml = originalHtml.replace(
-            new RegExp(this.escapeRegExp(mod.originalText), 'g'),
-            `{{ '${mod.key}' | translate }}`
-          );
-          mod.element.html(newHtml);
+          if (mod.replaceEntireContent) {
+            // Replace entire HTML content
+            mod.element.html(`{{ '${mod.key}' | translate }}`);
+          } else {
+            // Replace just the text content
+            mod.element.text(`{{ '${mod.key}' | translate }}`);
+          }
         });
 
         await fs.writeFile(filePath, $.html(), 'utf8');
@@ -78,6 +131,12 @@ class TextExtractor {
     } catch (error) {
       console.warn(`Warning: Could not process HTML template ${filePath}:`, error.message);
     }
+  }
+
+  containsTranslatableText(htmlContent) {
+    // Remove HTML tags and check if remaining text is translatable
+    const textOnly = htmlContent.replace(/<[^>]*>/g, '').trim();
+    return textOnly.length > 0 && !this.isExcluded(textOnly) && this.isDisplayText(textOnly);
   }
 
   async extractFromTypeScriptFile(filePath) {

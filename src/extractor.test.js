@@ -209,10 +209,11 @@ describe('TextExtractor', () => {
       
       await extractor.extractFromHtmlTemplate('/path/to/template.html');
       
-      expect(extractor.extractedTexts.size).toBe(3);
-      expect(extractor.extractedTexts.get('test.welcome_to_our_app_1')).toBe('Welcome to our app');
-      expect(extractor.extractedTexts.get('test.click_here_to_continue_2')).toBe('Click here to continue');
-      expect(extractor.extractedTexts.get('test.submit_3')).toBe('Submit');
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      
+      expect(extractedValues).toContain('Welcome to our app');
+      expect(extractedValues).toContain('Click here to continue');
+      expect(extractedValues).toContain('Submit');
     });
 
     it('should extract attribute values', async () => {
@@ -231,6 +232,87 @@ describe('TextExtractor', () => {
       expect(values).toContain('Enter your name');
       expect(values).toContain('Name field');
       expect(values).toContain('Company logo');
+    });
+
+    it('should extract text with nested HTML elements', async () => {
+      const htmlContent = `<div><p>This is <strong>important</strong> information</p><li>Click <em>here</em> to continue</li><h2>Welcome to <span class="brand">our app</span></h2><button>Save <i class="icon">💾</i> file</button></div>`;
+      
+      fs.readFile.mockResolvedValue(htmlContent);
+      
+      await extractor.extractFromHtmlTemplate('/path/to/template.html');
+      
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      
+      // Should extract HTML content including nested tags
+      expect(extractedValues).toContain('This is <strong>important</strong> information');
+      expect(extractedValues).toContain('Click <em>here</em> to continue');
+      expect(extractedValues).toContain('Welcome to <span class="brand">our app</span>');
+      expect(extractedValues).toContain('Save <i class="icon">💾</i> file');
+    });
+
+    it('should extract simple text without nested elements', async () => {
+      const htmlContent = `
+        <div>
+          <p>Simple paragraph text</p>
+          <li>Plain list item</li>
+          <h1>Basic heading</h1>
+        </div>
+      `;
+      
+      fs.readFile.mockResolvedValue(htmlContent);
+      
+      await extractor.extractFromHtmlTemplate('/path/to/template.html');
+      
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      
+      // Should extract plain text for simple elements
+      expect(extractedValues).toContain('Simple paragraph text');
+      expect(extractedValues).toContain('Plain list item');
+      expect(extractedValues).toContain('Basic heading');
+    });
+
+    it('should not extract nested elements separately when parent is processed', async () => {
+      const htmlContent = `
+        <div>
+          <p>Text with <strong>emphasis</strong> here</p>
+        </div>
+      `;
+      
+      fs.readFile.mockResolvedValue(htmlContent);
+      
+      await extractor.extractFromHtmlTemplate('/path/to/template.html');
+      
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      
+      // Should extract the full paragraph HTML, not separate "emphasis"
+      expect(extractedValues).toContain('Text with <strong>emphasis</strong> here');
+      expect(extractedValues).not.toContain('emphasis');
+    });
+
+    it('should handle complex nested structures', async () => {
+      const htmlContent = `
+        <div>
+          <p>
+            This is a <strong>complex</strong> paragraph with 
+            <em>multiple</em> <span class="highlight">nested</span> elements
+            and <a href="/link">links</a>.
+          </p>
+        </div>
+      `;
+      
+      fs.readFile.mockResolvedValue(htmlContent);
+      
+      await extractor.extractFromHtmlTemplate('/path/to/template.html');
+      
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      
+      // Should extract the entire complex HTML structure
+      expect(extractedValues.some(value => 
+        value.includes('<strong>complex</strong>') &&
+        value.includes('<em>multiple</em>') &&
+        value.includes('<span class="highlight">nested</span>') &&
+        value.includes('<a href="/link">links</a>')
+      )).toBe(true);
     });
 
     it('should replace text with i18n placeholders when replace option is enabled', async () => {
@@ -254,6 +336,31 @@ describe('TextExtractor', () => {
       
       expect(modifiedHtml).toContain("{{ 'test.");
       expect(modifiedHtml).toContain("' | translate }}");
+    });
+
+    it('should replace nested HTML content with i18n placeholders', async () => {
+      const extractor = new TextExtractor({ keyPrefix: 'test', replace: true });
+      const htmlContent = `
+        <div>
+          <p>This is <strong>important</strong> text</p>
+          <li>Simple text</li>
+        </div>
+      `;
+      
+      fs.readFile.mockResolvedValue(htmlContent);
+      fs.writeFile.mockResolvedValue();
+      
+      await extractor.extractFromHtmlTemplate('/path/to/template.html');
+      
+      expect(fs.writeFile).toHaveBeenCalled();
+      const writeCall = fs.writeFile.mock.calls[0];
+      const modifiedHtml = writeCall[1];
+      
+      // Should replace both nested and simple content
+      expect(modifiedHtml).toContain("{{ 'test.");
+      expect(modifiedHtml).toContain("' | translate }}");
+      // Original nested HTML should not appear in replaced content
+      expect(modifiedHtml).not.toContain('<strong>important</strong>');
     });
 
     it('should handle file read errors gracefully', async () => {
@@ -402,6 +509,40 @@ describe('TextExtractor', () => {
       expect(outputData.metadata.keyPrefix).toBe('test');
       
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('containsTranslatableText', () => {
+    let extractor;
+
+    beforeEach(() => {
+      extractor = new TextExtractor({ keyPrefix: 'test' });
+    });
+
+    it('should return true for HTML with translatable text', () => {
+      expect(extractor.containsTranslatableText('This is <strong>important</strong> text')).toBe(true);
+      expect(extractor.containsTranslatableText('Click <em>here</em> to continue')).toBe(true);
+      expect(extractor.containsTranslatableText('Welcome to <span>our app</span>')).toBe(true);
+    });
+
+    it('should return false for HTML without translatable text', () => {
+      expect(extractor.containsTranslatableText('<div></div>')).toBe(false);
+      expect(extractor.containsTranslatableText('<span>123</span>')).toBe(false);
+      expect(extractor.containsTranslatableText('<a href="https://example.com">https://example.com</a>')).toBe(false);
+    });
+
+    it('should return false for empty or whitespace-only HTML', () => {
+      expect(extractor.containsTranslatableText('')).toBe(false);
+      expect(extractor.containsTranslatableText('   ')).toBe(false);
+      expect(extractor.containsTranslatableText('<span>   </span>')).toBe(false);
+    });
+
+    it('should handle complex nested HTML', () => {
+      const complexHtml = `
+        This is a <strong>complex</strong> paragraph with 
+        <em>multiple</em> <span class="highlight">nested</span> elements.
+      `;
+      expect(extractor.containsTranslatableText(complexHtml)).toBe(true);
     });
   });
 
