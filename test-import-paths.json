@@ -1,0 +1,12 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.app.hello_from_root_1": "Hello from root",
+    "app.deepComponent.hello_from_deep_component_2": "Hello from deep component"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T13:02:27.311Z",
+    "totalTexts": 2,
+    "keyPrefix": "app"
+  }
+}

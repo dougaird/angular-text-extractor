@@ -71,7 +71,13 @@ class TextExtractor {
       this.setComponentContext(filePath);
       
       const content = await fs.readFile(filePath, 'utf8');
-      const $ = cheerio.load(content);
+      // Use cheerio options to preserve the original structure and not add html/body tags
+      const $ = cheerio.load(content, {
+        xmlMode: false,
+        decodeEntities: false,
+        withStartIndices: false,
+        withEndIndices: false
+      });
       const modifications = [];
       const processedElements = new Set();
 
@@ -179,7 +185,15 @@ class TextExtractor {
           }
         });
 
-        await fs.writeFile(filePath, $.html(), 'utf8');
+        // Extract only the inner content without the auto-added html/body wrapper
+        let modifiedHtml = $.html();
+        
+        // Remove auto-added html/body tags that Cheerio adds
+        if (modifiedHtml.startsWith('<html><head></head><body>') && modifiedHtml.endsWith('</body></html>')) {
+          modifiedHtml = modifiedHtml.slice(25, -14); // Remove wrapper tags
+        }
+        
+        await fs.writeFile(filePath, modifiedHtml, 'utf8');
       }
 
     } catch (error) {
@@ -246,7 +260,7 @@ class TextExtractor {
 
       if (this.options.replace && hasReplacements) {
         // Ensure TranslateService import and injection
-        modifiedContent = this.ensureTranslateServiceIntegration(modifiedContent);
+        modifiedContent = this.ensureTranslateServiceIntegration(modifiedContent, filePath);
         await fs.writeFile(filePath, modifiedContent, 'utf8');
       }
 
@@ -255,20 +269,23 @@ class TextExtractor {
     }
   }
 
-  ensureTranslateServiceIntegration(content) {
+  ensureTranslateServiceIntegration(content, filePath) {
     // Check if TranslateService is already imported
     const hasTranslateImport = /import.*TranslateService.*from\s+['"].*['"]/.test(content);
     
     if (!hasTranslateImport) {
+      // Calculate correct relative path to shared/translate.service.ts
+      const relativePath = this.calculateRelativePath(filePath);
+      
       // Add TranslateService import
       const importMatch = content.match(/import.*from\s+['"]@angular\/core['"];?\s*\n/);
       if (importMatch) {
         const insertIndex = importMatch.index + importMatch[0].length;
-        const importStatement = "import { TranslateService } from '../shared/translate.service';\n";
+        const importStatement = `import { TranslateService } from '${relativePath}';\n`;
         content = content.slice(0, insertIndex) + importStatement + content.slice(insertIndex);
       } else {
         // Add import at the top
-        content = "import { TranslateService } from '../shared/translate.service';\n" + content;
+        content = `import { TranslateService } from '${relativePath}';\n` + content;
       }
     }
 
@@ -306,6 +323,25 @@ class TextExtractor {
     }
 
     return content;
+  }
+
+  calculateRelativePath(filePath) {
+    // Get the directory of the current file
+    const fileDir = path.dirname(filePath);
+    
+    // Get the source directory being processed (this.options.srcPath or where shared folder is created)
+    const sourceBaseDir = this.sourceBaseDir || path.dirname(filePath.split('/')[0]);
+    
+    // Calculate the relative path from the file directory to the source base directory
+    const relativePath = path.relative(fileDir, sourceBaseDir);
+    
+    // If we're at the root level, shared is in the current directory
+    if (!relativePath || relativePath === '.') {
+      return './shared/translate.service';
+    }
+    
+    // Otherwise, build the path to shared folder
+    return path.join(relativePath, 'shared/translate.service').replace(/\\/g, '/');
   }
 
   extractStringLiterals(content) {
@@ -452,25 +488,46 @@ class TextExtractor {
   }
 
   isInsideMethod(context) {
-    // Simple heuristic: check for method signatures in recent context
-    const methodPattern = /\w+\s*\([^)]*\)\s*:\s*\w+\s*{|\w+\s*\([^)]*\)\s*{/g;
-    const constructorPattern = /constructor\s*\([^)]*\)\s*{/g;
+    // Look for method signatures in the context
+    const methodPatterns = [
+      /\w+\s*\([^)]*\)\s*:\s*\w+\s*\{/g,  // method(): type {
+      /\w+\s*\([^)]*\)\s*\{/g,            // method() {
+      /constructor\s*\([^)]*\)\s*\{/g,     // constructor() {
+      /=\s*\([^)]*\)\s*=>\s*\{/g,         // arrow functions
+      /function\s+\w+\s*\([^)]*\)\s*\{/g   // function declarations
+    ];
     
-    let lastMethodStart = -1;
-    let lastMethodEnd = -1;
+    let methodStart = -1;
+    let bracesCount = 0;
     
     // Find the most recent method start
-    let match;
-    while ((match = methodPattern.exec(context)) !== null) {
-      lastMethodStart = match.index + match[0].length;
+    for (const pattern of methodPatterns) {
+      let match;
+      pattern.lastIndex = 0; // Reset regex
+      while ((match = pattern.exec(context)) !== null) {
+        const startPos = match.index + match[0].length;
+        if (startPos > methodStart) {
+          methodStart = startPos;
+          bracesCount = 1; // We started inside a method
+        }
+      }
     }
     
-    while ((match = constructorPattern.exec(context)) !== null) {
-      lastMethodStart = Math.max(lastMethodStart, match.index + match[0].length);
+    // If we found a method, check if we're still inside it by counting braces
+    if (methodStart > -1) {
+      const afterMethod = context.substring(methodStart);
+      for (let i = 0; i < afterMethod.length; i++) {
+        if (afterMethod[i] === '{') bracesCount++;
+        if (afterMethod[i] === '}') bracesCount--;
+        if (bracesCount === 0) {
+          // We've left the method
+          return false;
+        }
+      }
+      return bracesCount > 0; // Still inside method if braces haven't closed
     }
     
-    // Simple check: if we found a method signature recently, we're probably in it
-    return lastMethodStart > lastMethodEnd && lastMethodStart > context.length - 300;
+    return false;
   }
 
   isDisplayText(text, context = null) {
@@ -647,8 +704,18 @@ class TextExtractor {
   }
 
   async extractFromDirectory(dirPath) {
+    // Store the source base directory for relative path calculations
+    this.sourceBaseDir = dirPath;
+    
     const htmlFiles = glob.sync('**/*.html', { cwd: dirPath });
-    const tsFiles = glob.sync('**/*.ts', { cwd: dirPath });
+    // Exclude test files from extraction
+    const tsFiles = glob.sync('**/*.ts', { cwd: dirPath }).filter(file => 
+      !file.includes('.spec.ts') && 
+      !file.includes('.test.ts') && 
+      !file.includes('test.ts') &&
+      !file.includes('/tests/') &&
+      !file.includes('/test/')
+    );
 
     console.log(`Found ${htmlFiles.length} HTML files and ${tsFiles.length} TypeScript files`);
 

@@ -1,0 +1,18 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.app.my_app_1": "My App",
+    "app.app.welcome_to_the_applicatio_2": "Welcome to the application",
+    "app.userProfile.save_changes_3": "Save Changes",
+    "app.userProfile.user_profile_4": "User Profile",
+    "app.userProfile.manage_your_personal_info_5": "Manage your personal information",
+    "app.userProfile.profile_updated_successfu_6": "Profile updated successfully!",
+    "app.userProfile.unable_to_save_profile_7": "Unable to save profile",
+    "app.userProfile.welcome_to_your_profile_p_8": "Welcome to your profile page"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T12:59:03.270Z",
+    "totalTexts": 8,
+    "keyPrefix": "app"
+  }
+}

@@ -50,7 +50,10 @@ module.exports = {
   // Ignore patterns
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/coverage/'
+    '/coverage/',
+    '/test-.*/',
+    '/fresh-.*/',
+    '/temp-.*/'
   ],
   
   // Setup files
