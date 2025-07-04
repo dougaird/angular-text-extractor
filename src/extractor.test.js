@@ -125,47 +125,84 @@ describe('TextExtractor', () => {
       expect(extractor.isDisplayText('Hello World')).toBe(true);
       expect(extractor.isDisplayText('Welcome to our app')).toBe(true);
       expect(extractor.isDisplayText('Click here to continue')).toBe(true);
+      expect(extractor.isDisplayText('Save your work')).toBe(true);
     });
 
-    it('should return false for identifiers', () => {
+    it('should return false for package/module imports', () => {
+      expect(extractor.isDisplayText('@angular/core')).toBe(false);
+      expect(extractor.isDisplayText('@angular/common')).toBe(false);
+      expect(extractor.isDisplayText('rxjs/operators')).toBe(false);
+      expect(extractor.isDisplayText('lodash/merge')).toBe(false);
+    });
+
+    it('should return false for simple identifiers', () => {
       expect(extractor.isDisplayText('someVariable')).toBe(false);
       expect(extractor.isDisplayText('user_id')).toBe(false);
       expect(extractor.isDisplayText('API_KEY')).toBe(false);
+      expect(extractor.isDisplayText('userId')).toBe(false);
+    });
+
+    it('should return false for file paths', () => {
+      expect(extractor.isDisplayText('./config/app.json')).toBe(false);
+      expect(extractor.isDisplayText('../shared/utils')).toBe(false);
+      expect(extractor.isDisplayText('/api/users')).toBe(false);
+      expect(extractor.isDisplayText('src/app/components')).toBe(false);
     });
 
     it('should return false for URLs', () => {
       expect(extractor.isDisplayText('https://example.com')).toBe(false);
       expect(extractor.isDisplayText('http://localhost:3000')).toBe(false);
+      expect(extractor.isDisplayText('ftp://files.example.com')).toBe(false);
     });
 
-    it('should return false for paths', () => {
-      expect(extractor.isDisplayText('/api/users')).toBe(false);
-      expect(extractor.isDisplayText('/home/user')).toBe(false);
+    it('should return false for Angular-specific patterns', () => {
+      expect(extractor.isDisplayText('ngOnInit')).toBe(false);
+      expect(extractor.isDisplayText('UserService')).toBe(false);
+      expect(extractor.isDisplayText('AppComponent')).toBe(false);
+      expect(extractor.isDisplayText('CustomDirective')).toBe(false);
     });
 
-    it('should return false for property access', () => {
-      expect(extractor.isDisplayText('object.property')).toBe(false);
-      expect(extractor.isDisplayText('user.name')).toBe(false);
+    it('should return false for technical constants', () => {
+      expect(extractor.isDisplayText('utf-8')).toBe(false);
+      expect(extractor.isDisplayText('application/json')).toBe(false);
+      expect(extractor.isDisplayText('GET')).toBe(false);
+      expect(extractor.isDisplayText('POST')).toBe(false);
     });
 
-    it('should return false for constants', () => {
-      expect(extractor.isDisplayText('MAX_USERS')).toBe(false);
-      expect(extractor.isDisplayText('DEFAULT_TIMEOUT')).toBe(false);
+    it('should return false for version numbers and IDs', () => {
+      expect(extractor.isDisplayText('1.2.3')).toBe(false);
+      expect(extractor.isDisplayText('2.0.0-beta')).toBe(false);
+      expect(extractor.isDisplayText('abc123def456')).toBe(false);
     });
 
-    it('should return false for numbers', () => {
-      expect(extractor.isDisplayText('123')).toBe(false);
-      expect(extractor.isDisplayText('456789')).toBe(false);
-    });
-
-    it('should return false for colors', () => {
-      expect(extractor.isDisplayText('#ffffff')).toBe(false);
-      expect(extractor.isDisplayText('#123abc')).toBe(false);
-    });
-
-    it('should return false for CSS-like values', () => {
+    it('should return false for CSS classes and selectors', () => {
+      expect(extractor.isDisplayText('.btn-primary')).toBe(false);
+      expect(extractor.isDisplayText('#main-content')).toBe(false);
       expect(extractor.isDisplayText('color:red')).toBe(false);
-      expect(extractor.isDisplayText('font-size:12px')).toBe(true); // This actually passes the isDisplayText check
+    });
+
+    it('should return false for very short strings', () => {
+      expect(extractor.isDisplayText('ok')).toBe(false);
+      expect(extractor.isDisplayText('no')).toBe(false);
+      expect(extractor.isDisplayText('a')).toBe(false);
+    });
+
+    it('should handle context-aware filtering', () => {
+      const importContext = { isImport: true };
+      const decoratorContext = { isDecorator: true };
+      const consoleContext = { isConsole: true };
+
+      expect(extractor.isDisplayText('Hello World', importContext)).toBe(false);
+      expect(extractor.isDisplayText('Component', decoratorContext)).toBe(false);
+      expect(extractor.isDisplayText('Debug message', consoleContext)).toBe(false);
+    });
+
+    it('should distinguish user-facing vs technical error messages', () => {
+      expect(extractor.isUserFacingErrorMessage('Please enter a valid email address')).toBe(true);
+      expect(extractor.isUserFacingErrorMessage('Your session has expired')).toBe(true);
+      expect(extractor.isUserFacingErrorMessage('TypeError: Cannot read property')).toBe(false);
+      expect(extractor.isUserFacingErrorMessage('failed to connect()')).toBe(false);
+      expect(extractor.isUserFacingErrorMessage('INVALID_CREDENTIALS')).toBe(false);
     });
   });
 
@@ -200,6 +237,54 @@ describe('TextExtractor', () => {
     });
   });
 
+  describe('getStringContext', () => {
+    let extractor;
+
+    beforeEach(() => {
+      extractor = new TextExtractor({ keyPrefix: 'test' });
+    });
+
+    it('should detect import statements', () => {
+      const code = "import { Component } from '@angular/core';";
+      const stringIndex = code.indexOf("'@angular/core'");
+      const context = extractor.getStringContext(code, stringIndex);
+      
+      expect(context.isImport).toBe(true);
+    });
+
+    it('should detect require calls', () => {
+      const code = "const fs = require('fs');";
+      const stringIndex = code.indexOf("'fs'");
+      const context = extractor.getStringContext(code, stringIndex);
+      
+      expect(context.isRequire).toBe(true);
+    });
+
+    it('should detect decorator usage', () => {
+      const code = "@Component('app-user')";
+      const stringIndex = code.indexOf("'app-user'");
+      const context = extractor.getStringContext(code, stringIndex);
+      
+      expect(context.isDecorator).toBe(true);
+    });
+
+    it('should detect console statements', () => {
+      const code = "console.log('Debug message');";
+      const stringIndex = code.indexOf("'Debug message'");
+      const context = extractor.getStringContext(code, stringIndex);
+      
+      expect(context.isConsole).toBe(true);
+    });
+
+    it('should detect property assignments', () => {
+      const code = "const config = { apiUrl: 'http://localhost' };";
+      const stringIndex = code.indexOf("'http://localhost'");
+      const context = extractor.getStringContext(code, stringIndex);
+      
+      expect(context.isProperty).toBe(true);
+    });
+  });
+
   describe('extractStringLiterals', () => {
     let extractor;
 
@@ -207,37 +292,118 @@ describe('TextExtractor', () => {
       extractor = new TextExtractor({ keyPrefix: 'test' });
     });
 
-    it('should extract string literals from TypeScript code', () => {
+    it('should extract only user-facing string literals', () => {
       const code = `
-        const message = 'Hello World';
-        const greeting = "Welcome to our app";
-        const template = \`Click here to continue\`;
+        import { Component } from '@angular/core';
+        
+        export class UserComponent {
+          title = 'User Profile';
+          apiUrl = 'https://api.example.com';
+          message = 'Welcome to your dashboard';
+          
+          constructor() {
+            console.log('Component initialized');
+          }
+        }
       `;
       
       const literals = extractor.extractStringLiterals(code);
-      expect(literals).toHaveLength(3);
-      expect(literals[0].value).toBe('Hello World');
-      expect(literals[1].value).toBe('Welcome to our app');
-      expect(literals[2].value).toBe('Click here to continue');
+      
+      // Should only extract user-facing messages
+      const values = literals.map(l => l.value);
+      expect(values).toContain('User Profile');
+      expect(values).toContain('Welcome to your dashboard');
+      expect(values).not.toContain('@angular/core');
+      expect(values).not.toContain('https://api.example.com');
+      expect(values).not.toContain('Component initialized');
     });
 
-    it('should handle escaped quotes', () => {
-      const code = "const message = 'Don\\'t forget';";
-      const literals = extractor.extractStringLiterals(code);
-      expect(literals).toHaveLength(1);
-      expect(literals[0].value).toBe("Don\\'t forget");
-    });
-
-    it('should filter out non-display text', () => {
+    it('should handle error messages appropriately', () => {
       const code = `
-        const api = 'https://api.example.com';
-        const message = 'Hello World';
-        const id = 'user_123';
+        if (!user) {
+          throw new Error('Please log in to continue');
+        }
+        
+        if (error) {
+          throw new Error('TypeError: Cannot read property');
+        }
       `;
       
       const literals = extractor.extractStringLiterals(code);
-      expect(literals).toHaveLength(1);
-      expect(literals[0].value).toBe('Hello World');
+      const values = literals.map(l => l.value);
+      
+      // Should include user-facing error, exclude technical error
+      expect(values).toContain('Please log in to continue');
+      expect(values).not.toContain('TypeError: Cannot read property');
+    });
+
+    it('should filter out configuration and technical strings', () => {
+      const code = `
+        const config = {
+          env: 'production',
+          version: '1.2.3',
+          features: ['auth', 'notifications'],
+          title: 'My Application'
+        };
+      `;
+      
+      const literals = extractor.extractStringLiterals(code);
+      const values = literals.map(l => l.value);
+      
+      // Should only extract user-facing title
+      expect(values).toContain('My Application');
+      expect(values).not.toContain('production');
+      expect(values).not.toContain('1.2.3');
+      expect(values).not.toContain('auth');
+      expect(values).not.toContain('notifications');
+    });
+
+    it('should exclude specific code patterns mentioned in requirements', () => {
+      const code = `
+        import { Component } from '@angular/core';
+        import * as utils from '../shared/utils';
+        
+        const API_ENDPOINTS = {
+          users: '/api/v1/users',
+          auth: '/auth/login'
+        };
+        
+        @Component({
+          selector: 'app-example'
+        })
+        export class ExampleComponent {
+          // Class constants
+          readonly LOG_LEVEL = 'debug';
+          readonly FILE_PATH = './config/settings.json';
+          
+          // User-facing content
+          pageTitle = 'Welcome to our platform';
+          errorMessage = 'Please check your internet connection';
+          
+          constructor() {
+            console.log('Component initialized');
+            console.debug('Debug info for development');
+          }
+        }
+      `;
+      
+      const literals = extractor.extractStringLiterals(code);
+      const values = literals.map(l => l.value);
+      
+      // Should exclude all code-related strings
+      expect(values).not.toContain('@angular/core');
+      expect(values).not.toContain('../shared/utils');
+      expect(values).not.toContain('/api/v1/users');
+      expect(values).not.toContain('/auth/login');
+      expect(values).not.toContain('app-example');
+      expect(values).not.toContain('debug');
+      expect(values).not.toContain('./config/settings.json');
+      expect(values).not.toContain('Component initialized');
+      expect(values).not.toContain('Debug info for development');
+      
+      // Should include user-facing content
+      expect(values).toContain('Welcome to our platform');
+      expect(values).toContain('Please check your internet connection');
     });
   });
 

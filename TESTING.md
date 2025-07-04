@@ -70,10 +70,10 @@ The project maintains high coverage standards:
 ### Test Coverage Areas
 
 1. **Text Extraction Logic**
-   - HTML template parsing
-   - TypeScript string literal extraction
-   - Display text validation
-   - Exclusion rules
+   - HTML template parsing with nested elements
+   - Context-aware TypeScript string literal extraction
+   - Enhanced display text validation with code filtering
+   - Comprehensive exclusion rules for technical strings
 
 2. **File Processing**
    - File reading and writing

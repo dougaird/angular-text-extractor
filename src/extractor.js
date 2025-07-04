@@ -228,11 +228,14 @@ class TextExtractor {
 
     while ((match = regex.exec(content)) !== null) {
       const value = match[2];
-      if (value.length > 0 && this.isDisplayText(value)) {
+      const context = this.getStringContext(content, match.index);
+      
+      if (value.length > 0 && this.isDisplayText(value, context)) {
         literals.push({
           full: match[0],
           value: value,
-          quote: match[1]
+          quote: match[1],
+          context: context
         });
       }
     }
@@ -240,20 +243,151 @@ class TextExtractor {
     return literals;
   }
 
-  isDisplayText(text) {
-    // Check if text looks like user-facing display text
-    const exclusions = [
-      /^[a-zA-Z0-9_-]+$/, // Simple identifiers
+  getStringContext(content, stringIndex) {
+    // Get surrounding context to help determine if string is code-related
+    const lineStart = content.lastIndexOf('\n', stringIndex) + 1;
+    const lineEnd = content.indexOf('\n', stringIndex);
+    const line = content.substring(lineStart, lineEnd === -1 ? content.length : lineEnd).trim();
+    
+    // Get previous 100 characters for additional context
+    const contextStart = Math.max(0, stringIndex - 100);
+    const beforeContext = content.substring(contextStart, stringIndex);
+    
+    return {
+      line: line,
+      beforeContext: beforeContext.toLowerCase(),
+      isImport: /^\s*import\s+/.test(line),
+      isRequire: /require\s*\(\s*$/.test(beforeContext),
+      isDecorator: /@\w+\s*\(\s*$/.test(beforeContext),
+      isProperty: /\w+\s*:\s*$/.test(beforeContext),
+      isArray: /\[\s*$/.test(beforeContext) || /,\s*$/.test(beforeContext),
+      isObjectKey: /{\s*$/.test(beforeContext) || /[,{]\s*\w*\s*$/.test(beforeContext),
+      isConditional: /if\s*\(|switch\s*\(|case\s+/.test(beforeContext),
+      isThrow: /throw\s+new\s+\w+\s*\(\s*$/.test(beforeContext),
+      isConsole: /console\.\w+\s*\(\s*$/.test(beforeContext)
+    };
+  }
+
+  isDisplayText(text, context = null) {
+    const trimmed = text.trim();
+    
+    // If we have context information, use it for better filtering
+    if (context) {
+      // Exclude strings based on context
+      if (context.isImport || context.isRequire) {
+        return false; // Import statements and require calls
+      }
+      
+      if (context.isDecorator) {
+        return false; // Angular decorators like @Component, @Injectable
+      }
+      
+      if (context.isThrow) {
+        // Only include user-facing error messages, exclude technical ones
+        return this.isUserFacingErrorMessage(trimmed);
+      }
+      
+      if (context.isConsole) {
+        return false; // Console logs are for debugging, not user-facing
+      }
+      
+      // Property names in object literals (usually config/technical)
+      if (context.isProperty && this.isCodeIdentifier(trimmed)) {
+        return false;
+      }
+      
+      // Items in arrays that look like code identifiers
+      if (context.isArray && this.isCodeIdentifier(trimmed)) {
+        return false;
+      }
+    }
+    
+    // Enhanced pattern-based exclusions
+    const codePatterns = [
+      // Package/module names
+      /^@[\w-]+\/[\w-]+$/, // Scoped packages like @angular/core
+      /^[\w-]+\/[\w-]+$/, // Package paths like some/module
+      
+      // File paths and URLs
       /^https?:\/\//, // URLs
-      /^\/[\/\w-]*$/, // Paths
-      /^\w+\.\w+/, // Property access
+      /^\/[\/\w.-]*$/, // Absolute paths
+      /^\.{1,2}\/[\/\w.-]*$/, // Relative paths
+      /^\w+:\/\//, // Any protocol
+      
+      // Code identifiers and selectors
+      /^[a-zA-Z_$][a-zA-Z0-9_$]*$/, // Simple identifiers (variables, functions)
       /^[A-Z_][A-Z0-9_]*$/, // Constants
-      /^\d+$/, // Numbers
+      /^\w+\.\w+/, // Property access
+      /^app-[\w-]+$/, // Angular component selectors
+      
+      // Template strings and interpolations
+      /^\{\{.*\}\}$/, // Angular interpolations like {{title}}
+      /^\$\{.*\}$/, // Template literal expressions
+      
+      // Technical strings
+      /^\d+$/, // Pure numbers
       /^#[0-9a-fA-F]+$/, // Colors
       /^[a-zA-Z]+:[a-zA-Z0-9-]+$/, // CSS-like values
+      /^[\w-]+\.[\w-]+$/, // File extensions or class.method
+      
+      // Angular/TypeScript specific
+      /^ng[A-Z]/, // Angular directives/components
+      /Component$|Service$|Directive$|Pipe$|Guard$|Resolver$|Module$/, // Angular class suffixes
+      /^(app|src)\//, // Common Angular paths
+      
+      // Common technical constants
+      /^(utf-8|utf8|ascii|base64|json|xml|html|css|js|ts)$/i,
+      /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/, // HTTP methods
+      /^(localhost|127\.0\.0\.1)/, // Local addresses
+      
+      // Version strings and technical IDs
+      /^\d+\.\d+(\.\d+)?/, // Version numbers
+      /^[a-f0-9]{8,}$/, // Hex IDs/hashes
+      
+      // Class selectors and technical strings
+      /^\.[\w-]+$/, // CSS classes
+      /^#[\w-]+$/, // IDs (not colors)
+      
+      // Constants and technical error codes
+      /^[A-Z_][A-Z0-9_]*$/, // ALL_CAPS constants
     ];
 
-    return !exclusions.some(pattern => pattern.test(text.trim()));
+    // Check if it matches any code pattern
+    if (codePatterns.some(pattern => pattern.test(trimmed))) {
+      return false;
+    }
+    
+    // Check for very short strings that are likely not user-facing
+    if (trimmed.length < 3) {
+      return false;
+    }
+    
+    // Must contain at least one space or be a meaningful word
+    if (!trimmed.includes(' ') && trimmed.length < 5 && this.isCodeIdentifier(trimmed)) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  isCodeIdentifier(text) {
+    // Check if text looks like a code identifier (camelCase, snake_case, etc.)
+    return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(text) && 
+           !/^(error|warning|info|success|message|title|name|label|button|link|text|content)$/i.test(text);
+  }
+
+  isUserFacingErrorMessage(text) {
+    // Determine if an error message is user-facing vs technical
+    const technicalPatterns = [
+      /undefined|null|NaN|TypeError|ReferenceError/, // Technical errors
+      /failed to|cannot|unable to.*\w+\(\)/, // Technical failure messages
+      /^[A-Z_][A-Z0-9_]*$/, // Constant-style error codes
+      /\w+\.\w+|\w+\(\)/, // Method references
+    ];
+    
+    return !technicalPatterns.some(pattern => pattern.test(text)) && 
+           text.length > 10 && // User messages are usually longer
+           /[a-z].*[a-z]/.test(text); // Contains lowercase letters (not just constants)
   }
 
   isExcluded(text) {
