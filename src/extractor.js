@@ -71,15 +71,18 @@ class TextExtractor {
       this.setComponentContext(filePath);
       
       const content = await fs.readFile(filePath, 'utf8');
-      // Use cheerio options to preserve the original structure and case sensitivity
+      // Use cheerio only for parsing and finding elements, not for final output
       const $ = cheerio.load(content, {
         xmlMode: false,
         decodeEntities: false,
-        lowerCaseAttributeNames: false,  // Preserve *ngFor, *ngIf case
-        lowerCaseTags: false,           // Preserve tag case
+        lowerCaseAttributeNames: false,
+        lowerCaseTags: false,
         recognizeSelfClosing: true
       });
-      const modifications = [];
+      
+      // Store text replacements to apply to original content
+      const textReplacements = [];
+      const attributeReplacements = [];
       const processedElements = new Set();
 
       // Define elements that typically contain translatable content (ordered by specificity)
@@ -88,11 +91,11 @@ class TextExtractor {
       // Process elements that might contain mixed content (text + HTML)
       // Process in order of specificity to avoid parent elements interfering
       contentElements.forEach(tagName => {
-        $(tagName).each((index, element) => {
-          const $el = $(element);
+        $(tagName).each((index, domElement) => {
+          const $el = $(domElement);
           
           // Skip if this element is nested inside another content element we've already processed
-          if (processedElements.has(element)) {
+          if (processedElements.has(domElement)) {
             return;
           }
           
@@ -120,17 +123,25 @@ class TextExtractor {
             return;
           }
           
-          // Skip if element has Angular directives that might contain text values
-          const hasAngularDirectives = $el.get(0).attribs && Object.keys($el.get(0).attribs).some(attr => 
-            attr.startsWith('*ng') || 
-            attr.startsWith('[') || 
-            attr.startsWith('(') ||
-            attr.includes('{{') ||
-            /^(ngIf|ngFor|ngClass|ngStyle|routerLink)/.test(attr)
-          );
-          
-          if (hasAngularDirectives) {
-            return;
+          // Skip if element has Angular directives that might contain text values that shouldn't be extracted
+          if (domElement.attribs) {
+            const hasProblematicDirectives = Object.keys(domElement.attribs).some(attr => {
+              const value = domElement.attribs[attr];
+              // Skip if directive contains expressions or interpolations
+              return (attr.startsWith('*ng') || 
+                      attr.startsWith('[') || 
+                      attr.startsWith('(') ||
+                      /^(ngIf|ngFor|ngClass|ngStyle)$/.test(attr)) &&
+                     (value.includes('{{') || value.includes('}}') || 
+                      value.includes('(') || value.includes(')') ||
+                      value.includes('[') || value.includes(']') ||
+                      /^\s*\w+\s*$/.test(value) || // Simple variable references
+                      /\w+\.\w+/.test(value)); // Property access
+            });
+            
+            if (hasProblematicDirectives) {
+              return;
+            }
           }
           
           // Check if element has child elements with text (mixed content)
@@ -143,16 +154,16 @@ class TextExtractor {
             this.extractedTexts.set(key, htmlContent);
             
             if (this.options.replace) {
-              modifications.push({
-                element: $el,
-                originalHtml: htmlContent,
-                key: key,
-                replaceEntireContent: true
+              // Store replacement for the entire HTML content
+              textReplacements.push({
+                originalText: htmlContent,
+                newText: `{{ '${key}' | translate }}`,
+                fullMatch: true
               });
             }
             
             // Mark this element and its children as processed
-            processedElements.add(element);
+            processedElements.add(domElement);
             $el.find('*').each((i, child) => processedElements.add(child));
           } else if (!hasChildElements) {
             // Simple text content without child elements
@@ -161,15 +172,15 @@ class TextExtractor {
               this.extractedTexts.set(key, fullText);
               
               if (this.options.replace) {
-                modifications.push({
-                  element: $el,
+                // Store replacement for text content only
+                textReplacements.push({
                   originalText: fullText,
-                  key: key,
-                  replaceEntireContent: false
+                  newText: `{{ '${key}' | translate }}`,
+                  fullMatch: false
                 });
               }
             }
-            processedElements.add(element);
+            processedElements.add(domElement);
           }
         });
       });
@@ -192,43 +203,47 @@ class TextExtractor {
             this.extractedTexts.set(key, attrValue);
             
             if (this.options.replace) {
-              $el.attr(attr, `{{ '${key}' | translate }}`);
+              attributeReplacements.push({
+                attribute: attr,
+                originalValue: attrValue,
+                newValue: `{{ '${key}' | translate }}`,
+                element: element
+              });
             }
           }
         });
       });
 
-      // Apply text replacements
-      if (this.options.replace) {
-        modifications.forEach(mod => {
-          if (mod.replaceEntireContent) {
-            // Replace entire HTML content
-            mod.element.html(`{{ '${mod.key}' | translate }}`);
-          } else {
-            // Replace just the text content
-            mod.element.text(`{{ '${mod.key}' | translate }}`);
-          }
+      // Apply replacements to original content
+      if (this.options.replace && (textReplacements.length > 0 || attributeReplacements.length > 0)) {
+        let modifiedContent = content;
+        
+        // Apply text replacements (sort by length descending to avoid partial replacements)
+        textReplacements
+          .sort((a, b) => b.originalText.length - a.originalText.length)
+          .forEach(replacement => {
+            // Use precise replacement to avoid changing formatting
+            modifiedContent = modifiedContent.replace(
+              new RegExp(this.escapeRegExp(replacement.originalText), 'g'),
+              replacement.newText
+            );
+          });
+        
+        // Apply attribute replacements
+        attributeReplacements.forEach(replacement => {
+          const attrPattern = new RegExp(
+            `(${replacement.attribute}\\s*=\\s*["'])` + 
+            this.escapeRegExp(replacement.originalValue) + 
+            `(["'])`,
+            'g'
+          );
+          modifiedContent = modifiedContent.replace(
+            attrPattern,
+            `$1${replacement.newValue}$2`
+          );
         });
-
-        // Extract only the inner content without the auto-added html/body wrapper
-        let modifiedHtml = $.html();
         
-        // Remove auto-added html/body tags that Cheerio adds
-        if (modifiedHtml.startsWith('<html><head></head><body>') && modifiedHtml.endsWith('</body></html>')) {
-          modifiedHtml = modifiedHtml.slice(25, -14); // Remove wrapper tags
-        }
-        
-        // Restore Angular directive case (fix Cheerio's lowercase conversion)
-        modifiedHtml = modifiedHtml
-          .replace(/\*ngif=/g, '*ngIf=')
-          .replace(/\*ngfor=/g, '*ngFor=')
-          .replace(/\*ngswitch=/g, '*ngSwitch=')
-          .replace(/\[ngclass\]=/g, '[ngClass]=')
-          .replace(/\[ngstyle\]=/g, '[ngStyle]=')
-          .replace(/routerlink=/g, 'routerLink=')
-          .replace(/\[routerlink\]=/g, '[routerLink]=');
-        
-        await fs.writeFile(filePath, modifiedHtml, 'utf8');
+        await fs.writeFile(filePath, modifiedContent, 'utf8');
       }
 
     } catch (error) {
