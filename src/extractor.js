@@ -8,19 +8,68 @@ class TextExtractor {
     this.options = options;
     this.extractedTexts = new Map();
     this.keyCounter = 1;
+    this.currentComponentContext = null;
   }
 
-  generateKey(text) {
+  extractComponentName(filePath) {
+    const path = require('path');
+    const fileName = path.basename(filePath, path.extname(filePath));
+    
+    // Common Angular patterns
+    const patterns = [
+      // Remove common suffixes: .component, .service, .directive, .pipe, .guard, .resolver
+      /\.(component|service|directive|pipe|guard|resolver|module|spec|test)$/i,
+      // Remove common prefixes
+      /^(app-|ng-)/i
+    ];
+    
+    let componentName = fileName;
+    patterns.forEach(pattern => {
+      componentName = componentName.replace(pattern, '');
+    });
+    
+    // Convert kebab-case to camelCase and abbreviate if needed
+    const camelCase = componentName
+      .split('-')
+      .map((word, index) => index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1))
+      .join('');
+    
+    // Create abbreviation if name is too long
+    if (camelCase.length > 15) {
+      // Take first letter of each word/segment
+      const abbreviated = componentName
+        .split('-')
+        .map(word => word.charAt(0))
+        .join('')
+        .toLowerCase();
+      return abbreviated.length >= 2 ? abbreviated : camelCase.substring(0, 10);
+    }
+    
+    return camelCase || 'comp';
+  }
+
+  setComponentContext(filePath) {
+    this.currentComponentContext = this.extractComponentName(filePath);
+  }
+
+  generateKey(text, filePath = null) {
     const cleanText = text.trim().toLowerCase()
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .replace(/\s+/g, '_')
-      .substring(0, 30);
+      .substring(0, 25); // Reduced to make room for component name
     
-    return `${this.options.keyPrefix}.${cleanText}_${this.keyCounter++}`;
+    // Use provided filePath or current context
+    const componentContext = filePath ? this.extractComponentName(filePath) : this.currentComponentContext;
+    const contextPart = componentContext ? `${componentContext}.` : '';
+    
+    return `${this.options.keyPrefix}.${contextPart}${cleanText}_${this.keyCounter++}`;
   }
 
   async extractFromHtmlTemplate(filePath) {
     try {
+      // Set component context based on file path
+      this.setComponentContext(filePath);
+      
       const content = await fs.readFile(filePath, 'utf8');
       const $ = cheerio.load(content);
       const modifications = [];
@@ -141,6 +190,9 @@ class TextExtractor {
 
   async extractFromTypeScriptFile(filePath) {
     try {
+      // Set component context based on file path
+      this.setComponentContext(filePath);
+      
       const content = await fs.readFile(filePath, 'utf8');
       const stringLiterals = this.extractStringLiterals(content);
       let modifiedContent = content;

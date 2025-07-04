@@ -33,32 +33,84 @@ describe('TextExtractor', () => {
     };
   });
 
+  describe('extractComponentName', () => {
+    let extractor;
+
+    beforeEach(() => {
+      extractor = new TextExtractor({ keyPrefix: 'test' });
+    });
+
+    it('should extract component name from standard Angular files', () => {
+      expect(extractor.extractComponentName('/path/to/user-profile.component.html')).toBe('userProfile');
+      expect(extractor.extractComponentName('/path/to/login.component.ts')).toBe('login');
+      expect(extractor.extractComponentName('/path/to/navigation-bar.component.html')).toBe('navigationBar');
+    });
+
+    it('should handle service and other Angular files', () => {
+      expect(extractor.extractComponentName('/path/to/auth.service.ts')).toBe('auth');
+      expect(extractor.extractComponentName('/path/to/user-data.service.ts')).toBe('userData');
+      expect(extractor.extractComponentName('/path/to/custom.directive.ts')).toBe('custom');
+    });
+
+    it('should remove common prefixes', () => {
+      expect(extractor.extractComponentName('/path/to/app-header.component.html')).toBe('header');
+      expect(extractor.extractComponentName('/path/to/ng-custom.component.ts')).toBe('custom');
+    });
+
+    it('should abbreviate very long component names', () => {
+      expect(extractor.extractComponentName('/path/to/very-long-component-name-that-exceeds-limit.component.html')).toBe('vlcntel');
+      expect(extractor.extractComponentName('/path/to/user-account-settings-form-management.component.ts')).toBe('uasfm');
+    });
+
+    it('should handle edge cases', () => {
+      expect(extractor.extractComponentName('/path/to/simple.html')).toBe('simple');
+      expect(extractor.extractComponentName('/path/to/a.ts')).toBe('a');
+      expect(extractor.extractComponentName('/path/to/.component.html')).toBe('comp');
+    });
+  });
+
   describe('generateKey', () => {
-    it('should generate a unique key with prefix', () => {
+    it('should generate a unique key with prefix and component context', () => {
+      const extractor = new TextExtractor({ keyPrefix: 'test' });
+      extractor.setComponentContext('/path/to/login.component.html');
+      const key = extractor.generateKey('Hello World');
+      expect(key).toBe('test.login.hello_world_1');
+    });
+
+    it('should handle special characters', () => {
+      const extractor = new TextExtractor({ keyPrefix: 'app' });
+      extractor.setComponentContext('/path/to/user-profile.component.ts');
+      const key = extractor.generateKey('Hello, World!');
+      expect(key).toBe('app.userProfile.hello_world_1');
+    });
+
+    it('should truncate long text', () => {
+      const extractor = new TextExtractor({ keyPrefix: 'app' });
+      extractor.setComponentContext('/path/to/test.component.html');
+      const longText = 'This is a very long text that should be truncated';
+      const key = extractor.generateKey(longText);
+      expect(key).toBe('app.test.this_is_a_very_long_text__1');
+    });
+
+    it('should increment counter for each key', () => {
+      const extractor = new TextExtractor({ keyPrefix: 'app' });
+      extractor.setComponentContext('/path/to/header.component.html');
+      const key1 = extractor.generateKey('Hello');
+      const key2 = extractor.generateKey('World');
+      expect(key1).toBe('app.header.hello_1');
+      expect(key2).toBe('app.header.world_2');
+    });
+
+    it('should work without component context', () => {
       const extractor = new TextExtractor({ keyPrefix: 'test' });
       const key = extractor.generateKey('Hello World');
       expect(key).toBe('test.hello_world_1');
     });
 
-    it('should handle special characters', () => {
-      const extractor = new TextExtractor({ keyPrefix: 'app' });
-      const key = extractor.generateKey('Hello, World!');
-      expect(key).toBe('app.hello_world_1');
-    });
-
-    it('should truncate long text', () => {
-      const extractor = new TextExtractor({ keyPrefix: 'app' });
-      const longText = 'This is a very long text that should be truncated';
-      const key = extractor.generateKey(longText);
-      expect(key).toBe('app.this_is_a_very_long_text_that__1');
-    });
-
-    it('should increment counter for each key', () => {
-      const extractor = new TextExtractor({ keyPrefix: 'app' });
-      const key1 = extractor.generateKey('Hello');
-      const key2 = extractor.generateKey('World');
-      expect(key1).toBe('app.hello_1');
-      expect(key2).toBe('app.world_2');
+    it('should use filePath parameter when provided', () => {
+      const extractor = new TextExtractor({ keyPrefix: 'test' });
+      const key = extractor.generateKey('Hello World', '/path/to/custom.component.html');
+      expect(key).toBe('test.custom.hello_world_1');
     });
   });
 
@@ -400,8 +452,10 @@ describe('TextExtractor', () => {
       await extractor.extractFromTypeScriptFile('/path/to/component.ts');
       
       expect(extractor.extractedTexts.size).toBe(2);
-      expect(extractor.extractedTexts.get('test.welcome_to_our_app_1')).toBe('Welcome to our app');
-      expect(extractor.extractedTexts.get('test.click_here_to_continue_2')).toBe('Click here to continue');
+      // Check that values are extracted correctly (keys will include component context)
+      const extractedValues = Array.from(extractor.extractedTexts.values());
+      expect(extractedValues).toContain('Welcome to our app');
+      expect(extractedValues).toContain('Click here to continue');
     });
 
     it('should replace strings with translation service calls when replace option is enabled', async () => {

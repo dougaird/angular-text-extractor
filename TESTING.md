@@ -54,8 +54,9 @@ The project maintains high coverage standards:
 
 ### Unit Tests
 - **`src/extractor.test.js`**: Tests for the main TextExtractor class
-  - Key generation and validation
-  - Text extraction from HTML templates
+  - Component-aware key generation and validation
+  - Component name extraction from file paths
+  - Text extraction from HTML templates with nested elements
   - Text extraction from TypeScript files
   - File processing and error handling
   - JSON output generation
