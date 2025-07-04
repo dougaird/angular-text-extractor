@@ -237,188 +237,7 @@ describe('TextExtractor', () => {
     });
   });
 
-  describe('getStringContext', () => {
-    let extractor;
 
-    beforeEach(() => {
-      extractor = new TextExtractor({ keyPrefix: 'test' });
-    });
-
-    it('should detect import statements', () => {
-      const code = "import { Component } from '@angular/core';";
-      const stringIndex = code.indexOf("'@angular/core'");
-      const context = extractor.getStringContext(code, stringIndex);
-      
-      expect(context.isImport).toBe(true);
-    });
-
-    it('should detect require calls', () => {
-      const code = "const fs = require('fs');";
-      const stringIndex = code.indexOf("'fs'");
-      const context = extractor.getStringContext(code, stringIndex);
-      
-      expect(context.isRequire).toBe(true);
-    });
-
-    it('should detect decorator usage', () => {
-      const code = "@Component('app-user')";
-      const stringIndex = code.indexOf("'app-user'");
-      const context = extractor.getStringContext(code, stringIndex);
-      
-      expect(context.isDecorator).toBe(true);
-    });
-
-    it('should detect console statements', () => {
-      const code = "console.log('Debug message');";
-      const stringIndex = code.indexOf("'Debug message'");
-      const context = extractor.getStringContext(code, stringIndex);
-      
-      expect(context.isConsole).toBe(true);
-    });
-
-    it('should detect property assignments', () => {
-      const code = "const config = { apiUrl: 'http://localhost' };";
-      const stringIndex = code.indexOf("'http://localhost'");
-      const context = extractor.getStringContext(code, stringIndex);
-      
-      expect(context.isProperty).toBe(true);
-    });
-  });
-
-  describe('extractStringLiterals', () => {
-    let extractor;
-
-    beforeEach(() => {
-      extractor = new TextExtractor({ keyPrefix: 'test' });
-    });
-
-    it('should extract only user-facing string literals from methods', () => {
-      const code = `
-        import { Component } from '@angular/core';
-        
-        export class UserComponent {
-          title = 'User Profile'; // Class property - will not be extracted unless user-facing
-          apiUrl = 'https://api.example.com'; // Technical - will not be extracted
-          
-          constructor() {
-            console.log('Component initialized'); // Console - will not be extracted
-          }
-
-          showMessage() {
-            alert('Welcome to your dashboard'); // Method call - will be extracted
-          }
-
-          displayTitle() {
-            return 'Profile Page Title'; // Method return - will be extracted
-          }
-        }
-      `;
-      
-      const literals = extractor.extractStringLiterals(code);
-      
-      // Should only extract user-facing messages from methods
-      const values = literals.map(l => l.value);
-      expect(values).toContain('Welcome to your dashboard');
-      expect(values).toContain('Profile Page Title');
-      expect(values).not.toContain('@angular/core');
-      expect(values).not.toContain('https://api.example.com');
-      expect(values).not.toContain('Component initialized');
-      expect(values).not.toContain('User Profile'); // Class property filtered out
-    });
-
-    it('should handle error messages appropriately', () => {
-      const code = `
-        if (!user) {
-          throw new Error('Please log in to continue');
-        }
-        
-        if (error) {
-          throw new Error('TypeError: Cannot read property');
-        }
-      `;
-      
-      const literals = extractor.extractStringLiterals(code);
-      const values = literals.map(l => l.value);
-      
-      // Should include user-facing error, exclude technical error
-      expect(values).toContain('Please log in to continue');
-      expect(values).not.toContain('TypeError: Cannot read property');
-    });
-
-    it('should filter out configuration and technical strings', () => {
-      const code = `
-        export class MyService {
-          private config = {
-            env: 'production',
-            version: '1.2.3',
-            features: ['auth', 'notifications']
-          };
-
-          showWelcome() {
-            return 'Welcome to My Application'; // User-facing in method
-          }
-        }
-      `;
-      
-      const literals = extractor.extractStringLiterals(code);
-      const values = literals.map(l => l.value);
-      
-      // Should only extract user-facing content from methods
-      expect(values).toContain('Welcome to My Application');
-      expect(values).not.toContain('production');
-      expect(values).not.toContain('1.2.3');
-      expect(values).not.toContain('auth');
-      expect(values).not.toContain('notifications');
-    });
-
-    it('should exclude specific code patterns mentioned in requirements', () => {
-      const code = `
-        import { Component } from '@angular/core';
-        import * as utils from '../shared/utils';
-        
-        const API_ENDPOINTS = {
-          users: '/api/v1/users',
-          auth: '/auth/login'
-        };
-        
-        @Component({
-          selector: 'app-example'
-        })
-        export class ExampleComponent {
-          // Class constants
-          readonly LOG_LEVEL = 'debug';
-          readonly FILE_PATH = './config/settings.json';
-          
-          // User-facing content
-          pageTitle = 'Welcome to our platform';
-          errorMessage = 'Please check your internet connection';
-          
-          constructor() {
-            console.log('Component initialized');
-            console.debug('Debug info for development');
-          }
-        }
-      `;
-      
-      const literals = extractor.extractStringLiterals(code);
-      const values = literals.map(l => l.value);
-      
-      // Should exclude all code-related strings
-      expect(values).not.toContain('@angular/core');
-      expect(values).not.toContain('../shared/utils');
-      expect(values).not.toContain('/api/v1/users');
-      expect(values).not.toContain('/auth/login');
-      expect(values).not.toContain('app-example');
-      expect(values).not.toContain('debug');
-      expect(values).not.toContain('./config/settings.json');
-      expect(values).not.toContain('Component initialized');
-      expect(values).not.toContain('Debug info for development');
-      
-      // Should include user-facing content
-      expect(values).toContain('Welcome to our platform');
-      expect(values).toContain('Please check your internet connection');
-    });
-  });
 
   describe('extractFromHtmlTemplate', () => {
     let extractor;
@@ -610,75 +429,6 @@ describe('TextExtractor', () => {
     });
   });
 
-  describe('extractFromTypeScriptFile', () => {
-    let extractor;
-
-    beforeEach(() => {
-      extractor = new TextExtractor({ keyPrefix: 'test', replace: false });
-    });
-
-    it('should extract display text from TypeScript files', async () => {
-      const tsContent = `
-        export class AppComponent {
-          title = 'Welcome to our app';
-          message = 'Click here to continue';
-          apiUrl = 'https://api.example.com';
-        }
-      `;
-      
-      fs.readFile.mockResolvedValue(tsContent);
-      
-      await extractor.extractFromTypeScriptFile('/path/to/component.ts');
-      
-      expect(extractor.extractedTexts.size).toBe(2);
-      // Check that values are extracted correctly (keys will include component context)
-      const extractedValues = Array.from(extractor.extractedTexts.values());
-      expect(extractedValues).toContain('Welcome to our app');
-      expect(extractedValues).toContain('Click here to continue');
-    });
-
-    it('should replace strings with translation service calls when replace option is enabled', async () => {
-      const extractor = new TextExtractor({ keyPrefix: 'test', replace: true });
-      const tsContent = `
-        export class AppComponent {
-          showMessage() {
-            alert('Welcome to our app');
-            return 'Click here to continue';
-          }
-          
-          private apiUrl = 'https://api.example.com';
-        }
-      `;
-      
-      fs.readFile.mockResolvedValue(tsContent);
-      fs.writeFile.mockResolvedValue();
-      
-      await extractor.extractFromTypeScriptFile('/path/to/component.ts');
-      
-      expect(fs.writeFile).toHaveBeenCalled();
-      const writeCall = fs.writeFile.mock.calls[0];
-      const modifiedContent = writeCall[1];
-      
-      expect(modifiedContent).toContain("this.translate.instant('test.");
-      expect(modifiedContent).not.toContain("'Welcome to our app'");
-      expect(modifiedContent).toContain("'https://api.example.com'"); // Should not be replaced
-    });
-
-    it('should handle file read errors gracefully', async () => {
-      fs.readFile.mockRejectedValue(new Error('File not found'));
-      
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
-      await extractor.extractFromTypeScriptFile('/path/to/nonexistent.ts');
-      
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Warning: Could not process TypeScript file /path/to/nonexistent.ts:',
-        'File not found'
-      );
-      
-      consoleSpy.mockRestore();
-    });
-  });
 
   describe('extractFromDirectory', () => {
     let extractor;
@@ -687,13 +437,10 @@ describe('TextExtractor', () => {
       extractor = new TextExtractor({ keyPrefix: 'test', replace: false });
     });
 
-    it('should process HTML and TypeScript files in directory', async () => {
+    it('should process HTML files in directory', async () => {
       glob.sync.mockImplementation((pattern) => {
         if (pattern === '**/*.html') {
           return ['component.html', 'template.html'];
-        }
-        if (pattern === '**/*.ts') {
-          return ['component.ts', 'service.ts'];
         }
         return [];
       });
@@ -704,8 +451,8 @@ describe('TextExtractor', () => {
       
       await extractor.extractFromDirectory('/src');
       
-      expect(consoleSpy).toHaveBeenCalledWith('Found 2 HTML files and 2 TypeScript files');
-      expect(fs.readFile).toHaveBeenCalledTimes(4);
+      expect(consoleSpy).toHaveBeenCalledWith('Found 2 HTML files');
+      expect(fs.readFile).toHaveBeenCalledTimes(2);
       
       consoleSpy.mockRestore();
     });

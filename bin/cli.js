@@ -19,7 +19,6 @@ program
   .option('-l, --locale <locale>', 'locale code for the extraction', 'en')
   .option('-k, --key-prefix <prefix>', 'prefix for generated keys', 'app')
   .option('-r, --replace', 'replace text with i18n pipe placeholders', false)
-  .option('--exclude-ts', 'skip TypeScript string extraction (HTML only)', false)
   .action(async (options) => {
     try {
       const srcPath = path.resolve(options.src);
@@ -30,15 +29,13 @@ program
       console.log(`Locale: ${options.locale}`);
       console.log(`Key prefix: ${options.keyPrefix}`);
       console.log(`Replace with placeholders: ${options.replace}`);
-      console.log(`TypeScript extraction: ${options.excludeTs ? 'disabled' : 'enabled'}`);
       
       await extractTexts({
         srcPath,
         outputPath,
         locale: options.locale,
         keyPrefix: options.keyPrefix,
-        replace: options.replace,
-        excludeTs: options.excludeTs
+        replace: options.replace
       });
       
       console.log('✅ Text extraction completed successfully!');

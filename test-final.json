@@ -1,0 +1,17 @@
+{
+  "locale": "en",
+  "translations": {
+    "app.app.save_changes_1": "Save Changes",
+    "app.app.home_2": "Home",
+    "app.app.about_us_3": "About Us",
+    "app.app.welcome_to_my_app_4": "Welcome to My App",
+    "app.app.this_is_a_sample_applicat_5": "This is a sample application with various Angular features",
+    "app.app.name_input_field_6": "Name input field",
+    "app.app.enter_your_name_7": "Enter your name"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T13:41:04.412Z",
+    "totalTexts": 7,
+    "keyPrefix": "app"
+  }
+}

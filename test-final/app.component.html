@@ -1,0 +1,26 @@
+<div class="container" *ngif="isVisible">
+  <h1>{{ 'app.app.welcome_to_my_app_4' | translate }}</h1>
+  <p>{{ 'app.app.this_is_a_sample_applicat_5' | translate }}</p>
+  
+  <div *ngfor="let item of items">
+    <span>{{ item.name }}</span>
+    <button [disabled]="item.disabled">Click Me</button>
+  </div>
+  
+  <form>
+    <input placeholder="{{ 'app.app.enter_your_name_7' | translate }}" title="{{ 'app.app.name_input_field_6' | translate }}">
+    <input [value]="username" placeholder="{{ userPlaceholder }}">
+    <button type="submit">{{ 'app.app.save_changes_1' | translate }}</button>
+  </form>
+  
+  <div class="alerts">
+    <p *ngif="hasError">{{ errorMessage }}</p>
+    <span [ngclass]="statusClass">Status: {{ currentStatus }}</span>
+  </div>
+  
+  <nav>
+    <a routerlink="/home">{{ 'app.app.home_2' | translate }}</a>
+    <a routerlink="/about">{{ 'app.app.about_us_3' | translate }}</a>
+    <a [routerlink]="dynamicLink">{{ linkText }}</a>
+  </nav>
+</div>

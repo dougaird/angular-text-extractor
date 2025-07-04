@@ -1,0 +1,11 @@
+{
+  "locale": "en",
+  "translations": {
+    "test.test.test_case_preservation_1": "Test Case Preservation"
+  },
+  "metadata": {
+    "extractedAt": "2025-07-04T13:42:25.533Z",
+    "totalTexts": 1,
+    "keyPrefix": "test"
+  }
+}

@@ -1,0 +1,4 @@
+<div *ngIf="showContent" *ngFor="let item of items">
+  <h1>{{ 'test.test.test_case_preservation_1' | translate }}</h1>
+  <button [ngClass]="buttonClass" routerLink="/test" (click)="handleClick()">Click Me</button>
+</div>
