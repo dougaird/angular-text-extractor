@@ -206,4 +206,4 @@ async function extractTexts(options) {
   await extractor.saveToJSON(options.outputPath);
 }
 
-module.exports = { extractTexts };
+module.exports = { extractTexts, TextExtractor };
