@@ -42,29 +42,29 @@ describe('TextExtractor', () => {
 
     it('should extract component name from standard Angular files', () => {
       expect(extractor.extractComponentName('/path/to/user-profile.component.html')).toBe('userProfile');
-      expect(extractor.extractComponentName('/path/to/login.component.ts')).toBe('login');
+      expect(extractor.extractComponentName('/path/to/login.component.html')).toBe('login');
       expect(extractor.extractComponentName('/path/to/navigation-bar.component.html')).toBe('navigationBar');
     });
 
     it('should handle service and other Angular files', () => {
-      expect(extractor.extractComponentName('/path/to/auth.service.ts')).toBe('auth');
-      expect(extractor.extractComponentName('/path/to/user-data.service.ts')).toBe('userData');
-      expect(extractor.extractComponentName('/path/to/custom.directive.ts')).toBe('custom');
+      expect(extractor.extractComponentName('/path/to/auth.service.html')).toBe('auth');
+      expect(extractor.extractComponentName('/path/to/user-data.service.html')).toBe('userData');
+      expect(extractor.extractComponentName('/path/to/custom.directive.html')).toBe('custom');
     });
 
     it('should remove common prefixes', () => {
       expect(extractor.extractComponentName('/path/to/app-header.component.html')).toBe('header');
-      expect(extractor.extractComponentName('/path/to/ng-custom.component.ts')).toBe('custom');
+      expect(extractor.extractComponentName('/path/to/ng-custom.component.html')).toBe('custom');
     });
 
     it('should abbreviate very long component names', () => {
       expect(extractor.extractComponentName('/path/to/very-long-component-name-that-exceeds-limit.component.html')).toBe('vlcntel');
-      expect(extractor.extractComponentName('/path/to/user-account-settings-form-management.component.ts')).toBe('uasfm');
+      expect(extractor.extractComponentName('/path/to/user-account-settings-form-management.component.html')).toBe('uasfm');
     });
 
     it('should handle edge cases', () => {
       expect(extractor.extractComponentName('/path/to/simple.html')).toBe('simple');
-      expect(extractor.extractComponentName('/path/to/a.ts')).toBe('a');
+      expect(extractor.extractComponentName('/path/to/a.html')).toBe('a');
       expect(extractor.extractComponentName('/path/to/.component.html')).toBe('comp');
     });
   });
@@ -79,7 +79,7 @@ describe('TextExtractor', () => {
 
     it('should handle special characters', () => {
       const extractor = new TextExtractor({ keyPrefix: 'app' });
-      extractor.setComponentContext('/path/to/user-profile.component.ts');
+      extractor.setComponentContext('/path/to/user-profile.component.html');
       const key = extractor.generateKey('Hello, World!');
       expect(key).toBe('app.userProfile.hello_world_1');
     });
